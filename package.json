@@ -1,0 +1,9 @@
+{
+  "name": "rebound-phaser",
+  "version": "1.0.0",
+  "description": "HTML5 Phaser remake of Poing-inspired Rebound.",
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/serve.mjs"
+  }
+}
