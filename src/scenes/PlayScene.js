@@ -239,6 +239,7 @@ export default class PlayScene extends Phaser.Scene {
     this.levelText = null;
     this.backWallText = null;
     this.testModeText = null;
+    this.screenshotHintText = null;
     this.messageText = null;
     this.pointTableTexts = [];
     this.panelBounds = null;
@@ -248,6 +249,10 @@ export default class PlayScene extends Phaser.Scene {
     this.keyS = null;
     this.launchKey = null;
     this.toggleTestKey = null;
+    this.captureScreenshotKey = null;
+    this.toggleGalleryKey = null;
+    this.prevScreenshotKey = null;
+    this.nextScreenshotKey = null;
 
     this.score = 0;
     this.bonus = 0;
@@ -270,6 +275,21 @@ export default class PlayScene extends Phaser.Scene {
     this.rescueTarget = null;
     this.autoPlay = false;
     this.rescueOriginIndex = null;
+
+    this.screenshots = [];
+    this.screenshotIndex = -1;
+    this.screenshotOverlay = null;
+    this.screenshotImage = null;
+    this.screenshotTimestampText = null;
+    this.screenshotEmptyText = null;
+    this.screenshotNavigationText = null;
+    this.screenshotImageMaxWidth = 0;
+    this.screenshotImageMaxHeight = 0;
+    this.screenshotSequence = 0;
+    this.screenshotCapturing = false;
+    this.wasWorldPaused = false;
+    this.backWallTextureKey = null;
+    this.timeScaleBeforeGallery = 1;
   }
 
   init(data) {
@@ -282,15 +302,24 @@ export default class PlayScene extends Phaser.Scene {
     this.screenLoop = data?.screenLoop ?? 0;
   }
 
+  preload() {
+    this.ensureCoreTextures();
+  }
+
   create() {
     this.physics.world.setBounds(0, 0, this.scale.width, this.scale.height);
+
+    this.ensureCoreTextures();
 
     this.createPaddle();
     this.createBall();
     this.createBackWall();
     this.createUI();
 
-    this.bricks = this.physics.add.staticGroup();
+    this.bricks = this.physics.add.group({
+      allowGravity: false,
+      immovable: true,
+    });
     this.loadScreen(this.currentScreenIndex);
 
     this.cursors = this.input.keyboard.createCursorKeys();
@@ -302,19 +331,36 @@ export default class PlayScene extends Phaser.Scene {
     this.toggleTestKey = this.input.keyboard.addKey(
       Phaser.Input.Keyboard.KeyCodes.T,
     );
+    this.captureScreenshotKey = this.input.keyboard.addKey(
+      Phaser.Input.Keyboard.KeyCodes.P,
+    );
+    this.toggleGalleryKey = this.input.keyboard.addKey(
+      Phaser.Input.Keyboard.KeyCodes.G,
+    );
+    this.prevScreenshotKey = this.input.keyboard.addKey(
+      Phaser.Input.Keyboard.KeyCodes.J,
+    );
+    this.nextScreenshotKey = this.input.keyboard.addKey(
+      Phaser.Input.Keyboard.KeyCodes.L,
+    );
 
     this.input.on('pointermove', (pointer) => {
-      if (this.autoPlay) {
+      if (this.autoPlay || this.isScreenshotOverlayVisible()) {
         return;
       }
       this.movePaddleTo(pointer.y);
     });
 
     this.input.on('pointerdown', () => {
+      if (this.isScreenshotOverlayVisible()) {
+        return;
+      }
       if (!this.ballLaunched && !this.inRescueRun) {
         this.launchBall();
       }
     });
+
+    this.createScreenshotOverlay();
 
     this.physics.add.collider(
       this.ball,
@@ -342,6 +388,20 @@ export default class PlayScene extends Phaser.Scene {
   }
 
   update(_, delta) {
+    const galleryActive = this.isScreenshotOverlayVisible();
+
+    if (Phaser.Input.Keyboard.JustDown(this.captureScreenshotKey) && !galleryActive) {
+      this.captureScreenshot();
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.toggleGalleryKey)) {
+      this.toggleScreenshotOverlay();
+    }
+
+    if (galleryActive) {
+      this.handleScreenshotNavigation();
+    }
+
     if (Phaser.Input.Keyboard.JustDown(this.toggleTestKey)) {
       this.autoPlay = !this.autoPlay;
       this.showMessage(this.autoPlay ? 'Self-test enabled' : 'Self-test disabled');
@@ -351,7 +411,11 @@ export default class PlayScene extends Phaser.Scene {
       this.updateUI();
     }
 
-    this.handleKeyboard(delta);
+    if (galleryActive) {
+      return;
+    }
+
+    this.handleKeyboard();
     this.handleAutoPlay(delta);
 
     if (!this.ballLaunched && !this.inRescueRun) {
@@ -379,29 +443,29 @@ export default class PlayScene extends Phaser.Scene {
   }
 
   createPaddle() {
-    this.paddle = this.add.rectangle(
-      PADDLE_X,
-      this.scale.height / 2,
-      PADDLE_WIDTH,
-      PADDLE_HEIGHT,
-      0x28f7a4,
-    );
-    this.physics.add.existing(this.paddle);
+    this.paddle = this.physics.add
+      .sprite(PADDLE_X, this.scale.height / 2, 'paddle-body')
+      .setOrigin(0.5);
+    this.paddle.setTint(0x28f7a4);
     this.paddle.body.setImmovable(true);
     this.paddle.body.setAllowGravity(false);
     this.paddle.body.setCollideWorldBounds(true);
+    this.paddle.body.setMaxVelocity(PADDLE_SPEED, PADDLE_SPEED);
+    this.paddle.body.setSize(PADDLE_WIDTH, PADDLE_HEIGHT);
+    this.paddle.body.setOffset(
+      this.paddle.displayWidth / 2 - PADDLE_WIDTH / 2,
+      this.paddle.displayHeight / 2 - PADDLE_HEIGHT / 2,
+    );
   }
 
   createBall() {
-    this.ball = this.add.circle(
-      PADDLE_X + PADDLE_WIDTH,
-      this.paddle.y,
-      BALL_RADIUS,
-      0xffffff,
-    );
-    this.physics.add.existing(this.ball);
+    this.ball = this.physics.add
+      .sprite(PADDLE_X + PADDLE_WIDTH, this.paddle.y, 'ball-body')
+      .setOrigin(0.5);
+    this.ball.setTint(0xffffff);
     this.ball.body.setBounce(1, 1);
-    this.ball.body.setCircle(BALL_RADIUS);
+    const offset = this.ball.displayWidth / 2 - BALL_RADIUS;
+    this.ball.body.setCircle(BALL_RADIUS, offset, offset);
     this.ball.body.setAllowGravity(false);
     this.ball.body.setCollideWorldBounds(true);
     this.ball.body.setBoundsCollision(false, true, true, true);
@@ -412,17 +476,86 @@ export default class PlayScene extends Phaser.Scene {
 
   createBackWall() {
     const wallWidth = 14;
-    this.backWall = this.add
-      .rectangle(
-        this.scale.width - wallWidth / 2,
-        this.scale.height / 2,
-        wallWidth,
-        this.scale.height - 80,
-        0x1a2144,
-        0.7,
-      )
+    const wallHeight = this.scale.height - 80;
+    const key = this.getBackWallTextureKey(wallHeight);
+    this.backWall = this.physics.add
+      .sprite(this.scale.width - wallWidth / 2, this.scale.height / 2, key)
       .setOrigin(0.5);
-    this.physics.add.existing(this.backWall, true);
+    this.backWallTextureKey = key;
+    this.backWall.setTint(0x1a2144);
+    this.backWall.setAlpha(0.7);
+    this.backWall.body.setAllowGravity(false);
+    this.backWall.body.setImmovable(true);
+    this.backWall.body.moves = false;
+    this.backWall.body.setSize(wallWidth, wallHeight);
+    this.backWall.body.setOffset(
+      this.backWall.displayWidth / 2 - wallWidth / 2,
+      this.backWall.displayHeight / 2 - wallHeight / 2,
+    );
+  }
+
+  ensureCoreTextures() {
+    this.ensureRoundedRectTexture('paddle-body', PADDLE_WIDTH, PADDLE_HEIGHT, 14);
+    this.ensureCircleTexture('ball-body', BALL_RADIUS);
+    this.ensureBrickTexture();
+  }
+
+  ensureRoundedRectTexture(key, width, height, radius = 8) {
+    if (this.textures.exists(key)) {
+      return;
+    }
+
+    const graphics = this.make.graphics({ x: 0, y: 0, add: false });
+    graphics.fillGradientStyle(0xffffff, 0xf4f4f4, 0xe0e0e0, 0xfbfbfb, 1, 1, 1, 1);
+    graphics.fillRoundedRect(0, 0, width, height, radius);
+    graphics.lineStyle(2, 0xffffff, 0.55);
+    graphics.strokeRoundedRect(0, 0, width, height, radius);
+    graphics.generateTexture(key, width, height);
+    graphics.destroy();
+  }
+
+  ensureBrickTexture() {
+    const key = 'brick-body';
+    if (this.textures.exists(key)) {
+      return;
+    }
+
+    const width = 44;
+    const height = 24;
+    const graphics = this.make.graphics({ x: 0, y: 0, add: false });
+    graphics.fillGradientStyle(0xffffff, 0xf6f6f6, 0xe4e4e4, 0xfafafa, 1, 1, 1, 1);
+    graphics.fillRoundedRect(0, 0, width, height, 6);
+    graphics.lineStyle(2, 0xffffff, 0.62);
+    graphics.strokeRoundedRect(0, 0, width, height, 6);
+    graphics.fillStyle(0xffffff, 0.28);
+    graphics.fillRoundedRect(3, 3, width - 6, height / 2, 4);
+    graphics.generateTexture(key, width, height);
+    graphics.destroy();
+  }
+
+  ensureCircleTexture(key, radius) {
+    if (this.textures.exists(key)) {
+      return;
+    }
+
+    const diameter = radius * 2;
+    const graphics = this.make.graphics({ x: 0, y: 0, add: false });
+    graphics.fillStyle(0xffffff, 1);
+    graphics.fillCircle(radius, radius, radius);
+    graphics.lineStyle(2, 0xffffff, 0.75);
+    graphics.strokeCircle(radius, radius, radius - 1);
+    graphics.fillStyle(0xffffff, 0.45);
+    graphics.fillCircle(radius - radius * 0.25, radius - radius * 0.3, radius * 0.4);
+    graphics.generateTexture(key, diameter, diameter);
+    graphics.destroy();
+  }
+
+  getBackWallTextureKey(height) {
+    const key = `back-wall-${height}`;
+    if (!this.textures.exists(key)) {
+      this.ensureRoundedRectTexture(key, 14, height, 10);
+    }
+    return key;
   }
 
   createUI() {
@@ -466,7 +599,12 @@ export default class PlayScene extends Phaser.Scene {
       fontSize: '14px',
     });
 
-    this.testModeText = this.add.text(24, this.scale.height - 40, '', {
+    this.testModeText = this.add.text(24, this.scale.height - 64, '', {
+      ...textStyle,
+      fontSize: '14px',
+    });
+
+    this.screenshotHintText = this.add.text(24, this.scale.height - 40, '', {
       ...textStyle,
       fontSize: '14px',
     });
@@ -545,16 +683,11 @@ export default class PlayScene extends Phaser.Scene {
     });
   }
 
-  handleKeyboard(delta) {
+  handleKeyboard() {
     if (this.autoPlay) {
-      this.paddle.body.setVelocityY(0);
+      this.paddle.body.setVelocity(0, 0);
       return;
     }
-
-    const deltaSeconds = delta / 1000;
-    const halfHeight = this.paddle.displayHeight / 2;
-    const maxY = this.scale.height - halfHeight;
-    const minY = halfHeight;
 
     let direction = 0;
     if (this.cursors.up.isDown || this.keyW.isDown) {
@@ -563,13 +696,7 @@ export default class PlayScene extends Phaser.Scene {
       direction = 1;
     }
 
-    if (direction !== 0) {
-      this.paddle.y += direction * PADDLE_SPEED * deltaSeconds;
-      this.paddle.y = Phaser.Math.Clamp(this.paddle.y, minY, maxY);
-      this.paddle.body.updateFromGameObject();
-    } else {
-      this.paddle.body.setVelocityY(0);
-    }
+    this.paddle.body.setVelocity(0, direction * PADDLE_SPEED);
   }
 
   handleAutoPlay(delta) {
@@ -589,20 +716,20 @@ export default class PlayScene extends Phaser.Scene {
 
   movePaddleTo(y) {
     const halfHeight = this.paddle.displayHeight / 2;
-    this.paddle.y = Phaser.Math.Clamp(
+    const clamped = Phaser.Math.Clamp(
       y,
       halfHeight,
       this.scale.height - halfHeight,
     );
-    this.paddle.body.updateFromGameObject();
+    this.paddle.setY(clamped);
+    this.paddle.body.reset(this.paddle.x, clamped);
   }
 
   attachBallToPaddle() {
     const offset = this.paddle.displayWidth / 2 + BALL_RADIUS + 4;
-    this.ball.x = this.paddle.x + offset;
-    this.ball.y = this.paddle.y;
+    this.ball.setPosition(this.paddle.x + offset, this.paddle.y);
     this.ball.body.setVelocity(0, 0);
-    this.ball.body.updateFromGameObject();
+    this.ball.body.reset(this.ball.x, this.ball.y);
   }
 
   launchBall() {
@@ -669,7 +796,7 @@ export default class PlayScene extends Phaser.Scene {
   }
 
   handleBrickHit(_, brick) {
-    if (!brick) {
+    if (!brick || !brick.body || !brick.body.enable) {
       return;
     }
 
@@ -732,17 +859,13 @@ export default class PlayScene extends Phaser.Scene {
       type.hits - remainingHits,
     );
     const tint = Phaser.Display.Color.GetColor(mix.r, mix.g, mix.b);
-    brick.setFillStyle(tint, 1);
-    this.time.delayedCall(0, () => {
-      brick.body?.updateFromGameObject?.();
-    });
+    brick.setTint(tint);
   }
 
   revealPowerUp(brick, type) {
     brick.setData('powerUpReady', true);
     brick.setData('hits', 1);
-    brick.setFillStyle(type.color, 1);
-    brick.setStrokeStyle(2, 0x88ffcc, 0.85);
+    brick.setTint(type.color);
     brick.setAlpha(0.45);
     this.tweens.add({
       targets: brick,
@@ -879,10 +1002,18 @@ export default class PlayScene extends Phaser.Scene {
     const brickWidth = 44;
     const brickHeight = 24;
 
-    const brick = this.add
-      .rectangle(blueprint.x, blueprint.y, brickWidth, brickHeight, type.color)
-      .setStrokeStyle(2, 0x0c1229, 0.5);
-
+    const brick = this.physics.add
+      .sprite(blueprint.x, blueprint.y, 'brick-body')
+      .setOrigin(0.5);
+    brick.setTint(type.color);
+    brick.body.setAllowGravity(false);
+    brick.body.setImmovable(true);
+    brick.body.moves = false;
+    brick.body.setSize(brickWidth, brickHeight);
+    brick.body.setOffset(
+      brick.displayWidth / 2 - brickWidth / 2,
+      brick.displayHeight / 2 - brickHeight / 2,
+    );
     brick.setData('typeKey', blueprint.typeKey);
     brick.setData('hits', type.hits);
     brick.setData('colIndex', blueprint.colIndex);
@@ -894,7 +1025,6 @@ export default class PlayScene extends Phaser.Scene {
     brick.setData('powerUp', type.powerUp ?? null);
     brick.setData('regenGroup', type.regenGroup ?? null);
 
-    this.physics.add.existing(brick, true);
     this.bricks.add(brick);
 
     if (blueprint.isHidden) {
@@ -920,6 +1050,7 @@ export default class PlayScene extends Phaser.Scene {
     brick.setActive(true);
     brick.setVisible(true);
     brick.body.enable = true;
+    brick.body.stop();
     brick.setAlpha(0.8);
     this.tweens.add({
       targets: brick,
@@ -945,7 +1076,7 @@ export default class PlayScene extends Phaser.Scene {
     this.backWallHits = 0;
     this.exitOpen = false;
     this.ball.body.checkCollision.right = true;
-    this.backWall.setFillStyle(0x1a2144, 0.7);
+    this.backWall.setTint(0x1a2144);
     this.backWall.setAlpha(0.7);
 
     this.bricks.clear(true, true);
@@ -1143,7 +1274,7 @@ export default class PlayScene extends Phaser.Scene {
 
     this.backWallHits += 1;
     this.bonus += BACK_WALL_BONUS * this.bonusMultiplier;
-    this.backWall.setFillStyle(0x2cf28b, 0.85);
+    this.backWall.setTint(0x2cf28b);
     this.backWall.setAlpha(0.9);
     this.tweens.add({
       targets: this.backWall,
@@ -1162,7 +1293,7 @@ export default class PlayScene extends Phaser.Scene {
   openExit() {
     this.exitOpen = true;
     this.ball.body.checkCollision.right = false;
-    this.backWall.setFillStyle(0x51f1b6, 0.45);
+    this.backWall.setTint(0x51f1b6);
     this.backWall.setAlpha(0.25);
     this.showMessage('Back wall breached! Dive through!');
   }
@@ -1200,6 +1331,285 @@ export default class PlayScene extends Phaser.Scene {
     this.testModeText.setText(
       this.autoPlay ? 'SELF-TEST: ON (T)' : 'SELF-TEST: OFF (T)',
     );
+    const shots = this.screenshots.length;
+    const label = shots === 1 ? 'SHOT' : 'SHOTS';
+    this.screenshotHintText.setText(
+      `P CAPTURE  G GALLERY  J/K BROWSE  (${shots} ${label})`,
+    );
+    this.updateScreenshotOverlay();
+  }
+
+  createScreenshotOverlay() {
+    if (this.screenshotOverlay) {
+      return;
+    }
+
+    const overlayWidth = Math.min(this.scale.width - 120, 720);
+    const overlayHeight = Math.min(this.scale.height - 80, 440);
+    const container = this.add.container(
+      this.scale.width / 2,
+      this.scale.height / 2,
+    );
+    container.setDepth(1000);
+    container.setVisible(false);
+    container.setActive(false);
+
+    const background = this.add.graphics();
+    background.fillStyle(0x050a18, 0.92);
+    background.fillRoundedRect(
+      -overlayWidth / 2,
+      -overlayHeight / 2,
+      overlayWidth,
+      overlayHeight,
+      18,
+    );
+    background.lineStyle(2, 0x45d6ff, 0.65);
+    background.strokeRoundedRect(
+      -overlayWidth / 2,
+      -overlayHeight / 2,
+      overlayWidth,
+      overlayHeight,
+      18,
+    );
+    container.add(background);
+
+    const title = this.add
+      .text(0, -overlayHeight / 2 + 20, 'SCREENSHOT GALLERY', {
+        fontFamily: 'Press Start 2P',
+        fontSize: '14px',
+        color: '#9ae6ff',
+        align: 'center',
+        letterSpacing: 1.2,
+      })
+      .setOrigin(0.5);
+    container.add(title);
+
+    const image = this.add
+      .image(0, -16, '__WHITE')
+      .setVisible(false)
+      .setTint(0xffffff)
+      .setOrigin(0.5);
+    container.add(image);
+
+    const emptyText = this.add
+      .text(0, -12, 'No screenshots yet\nPress P to capture one', {
+        fontFamily: 'Press Start 2P',
+        fontSize: '12px',
+        color: '#f0f6ff',
+        align: 'center',
+        lineSpacing: 6,
+      })
+      .setOrigin(0.5);
+    emptyText.setVisible(false);
+    container.add(emptyText);
+
+    const timestampText = this.add
+      .text(0, overlayHeight / 2 - 68, '', {
+        fontFamily: 'Press Start 2P',
+        fontSize: '12px',
+        color: '#f8f8f8',
+        align: 'center',
+      })
+      .setOrigin(0.5);
+    container.add(timestampText);
+
+    const navigationText = this.add
+      .text(0, overlayHeight / 2 - 40, 'J PREV   K NEXT   G CLOSE', {
+        fontFamily: 'Press Start 2P',
+        fontSize: '12px',
+        color: '#9ae6ff',
+        align: 'center',
+      })
+      .setOrigin(0.5);
+    container.add(navigationText);
+
+    this.screenshotOverlay = container;
+    this.screenshotImage = image;
+    this.screenshotTimestampText = timestampText;
+    this.screenshotEmptyText = emptyText;
+    this.screenshotNavigationText = navigationText;
+    this.screenshotImageMaxWidth = overlayWidth - 88;
+    this.screenshotImageMaxHeight = overlayHeight - 170;
+
+    this.updateScreenshotOverlay();
+  }
+
+  isScreenshotOverlayVisible() {
+    return Boolean(this.screenshotOverlay?.visible);
+  }
+
+  toggleScreenshotOverlay() {
+    if (!this.screenshotOverlay) {
+      return;
+    }
+
+    const shouldShow = !this.isScreenshotOverlayVisible();
+    this.screenshotOverlay.setVisible(shouldShow);
+    this.screenshotOverlay.setActive(shouldShow);
+
+    if (shouldShow) {
+      this.wasWorldPaused = this.physics.world.isPaused;
+      if (!this.wasWorldPaused) {
+        this.physics.world.pause();
+      }
+      this.timeScaleBeforeGallery = this.time.timeScale ?? 1;
+      this.time.timeScale = 0;
+      const targetIndex =
+        this.screenshotIndex >= 0
+          ? this.screenshotIndex
+          : this.screenshots.length - 1;
+      this.showScreenshot(targetIndex >= 0 ? targetIndex : 0);
+    } else {
+      if (!this.wasWorldPaused) {
+        this.physics.world.resume();
+      }
+      this.time.timeScale = this.timeScaleBeforeGallery ?? 1;
+    }
+  }
+
+  handleScreenshotNavigation() {
+    if (Phaser.Input.Keyboard.JustDown(this.prevScreenshotKey)) {
+      this.navigateScreenshots(-1);
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.nextScreenshotKey)) {
+      this.navigateScreenshots(1);
+    }
+  }
+
+  navigateScreenshots(offset) {
+    if (this.screenshots.length === 0) {
+      this.showScreenshot(0);
+      return;
+    }
+
+    const length = this.screenshots.length;
+    if (this.screenshotIndex < 0) {
+      this.screenshotIndex = 0;
+    }
+    const nextIndex = Phaser.Math.Wrap(this.screenshotIndex + offset, 0, length);
+    this.screenshotIndex = nextIndex;
+    this.showScreenshot(this.screenshotIndex);
+  }
+
+  captureScreenshot() {
+    if (this.screenshotCapturing) {
+      return;
+    }
+
+    this.screenshotCapturing = true;
+    this.game.renderer.snapshot((image) => {
+      const key = this.getNextScreenshotKey();
+      this.textures.addImage(key, image);
+      const entry = {
+        key,
+        timestamp: new Date(),
+        width: image.width ?? this.scale.width,
+        height: image.height ?? this.scale.height,
+      };
+      this.screenshots.push(entry);
+      this.screenshotIndex = this.screenshots.length - 1;
+      this.showMessage('Screenshot captured');
+      this.updateUI();
+      if (this.isScreenshotOverlayVisible()) {
+        this.showScreenshot(this.screenshotIndex);
+      }
+      this.screenshotCapturing = false;
+    });
+  }
+
+  getNextScreenshotKey() {
+    this.screenshotSequence += 1;
+    let key = `screenshot-${this.screenshotSequence}`;
+    while (this.textures.exists(key)) {
+      this.screenshotSequence += 1;
+      key = `screenshot-${this.screenshotSequence}`;
+    }
+    return key;
+  }
+
+  showScreenshot(index) {
+    if (!this.screenshotOverlay) {
+      return;
+    }
+
+    const total = this.screenshots.length;
+    if (total === 0) {
+      this.screenshotImage?.setVisible(false);
+      this.screenshotEmptyText?.setVisible(true);
+      this.screenshotTimestampText?.setText('No screenshots yet');
+      this.updateScreenshotOverlay();
+      return;
+    }
+
+    const wrapped = Phaser.Math.Wrap(index, 0, total);
+    this.screenshotIndex = wrapped;
+    const shot = this.screenshots[wrapped];
+
+    if (this.screenshotEmptyText) {
+      this.screenshotEmptyText.setVisible(false);
+    }
+
+    if (this.screenshotImage) {
+      this.screenshotImage.setVisible(true);
+      this.screenshotImage.setTexture(shot.key);
+      this.fitScreenshotImage(shot);
+    }
+
+    if (this.screenshotTimestampText) {
+      this.screenshotTimestampText.setText(
+        `${this.formatTimestamp(shot.timestamp)}  •  ${wrapped + 1}/${total}`,
+      );
+    }
+
+    this.updateScreenshotOverlay();
+  }
+
+  fitScreenshotImage(shot) {
+    if (!this.screenshotImage) {
+      return;
+    }
+
+    const maxWidth = this.screenshotImageMaxWidth;
+    const maxHeight = this.screenshotImageMaxHeight;
+    const width = Math.max(shot.width ?? maxWidth, 1);
+    const height = Math.max(shot.height ?? maxHeight, 1);
+    const scale = Math.min(maxWidth / width, maxHeight / height);
+    this.screenshotImage.setDisplaySize(width * scale, height * scale);
+  }
+
+  updateScreenshotOverlay() {
+    if (!this.screenshotNavigationText) {
+      return;
+    }
+
+    const total = this.screenshots.length;
+    if (total === 0) {
+      this.screenshotNavigationText.setText('G CLOSE   •   CAPTURE WITH P');
+      if (this.isScreenshotOverlayVisible() && this.screenshotEmptyText) {
+        this.screenshotEmptyText.setVisible(true);
+      }
+      return;
+    }
+
+    const label = total === 1 ? 'SHOT' : 'SHOTS';
+    this.screenshotNavigationText.setText(
+      `J PREV   K NEXT   G CLOSE   •   ${total} ${label}`,
+    );
+  }
+
+  formatTimestamp(date) {
+    if (!(date instanceof Date)) {
+      return '';
+    }
+
+    const pad = (value) => value.toString().padStart(2, '0');
+    const year = date.getFullYear();
+    const month = pad(date.getMonth() + 1);
+    const day = pad(date.getDate());
+    const hours = pad(date.getHours());
+    const minutes = pad(date.getMinutes());
+    const seconds = pad(date.getSeconds());
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   }
 
   showMessage(text) {

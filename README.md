@@ -8,6 +8,7 @@ Rebound Phaser is a browser-based reimagining of **Poing**, the cult-classic Ami
 - Colour-coded brick formations that mix score bricks, bonus bricks, regenerating waves, and concealed power-ups.
 - A live side panel showing brick values, back-wall progress, score, bonus multiplier, and remaining lives.
 - Built-in self-test autopilot so you can watch the game exercise itself while you debug or demo changes.
+- An in-game screenshot gallery so you can capture frames mid-run and review them later without leaving the browser.
 
 ## Play it online
 - The latest build is always live at **https://dessimat0r.github.io/rebound-phaser/**. Use it to sanity-check behaviour in a production-like environment before and after changes.
@@ -28,6 +29,9 @@ If you prefer to use another static file server, run one from the repository roo
 - **Keyboard**: Use **W / S** or the **Up / Down arrow keys** to slide the paddle.
 - **Space**: Launch the ball when it is resting on the paddle.
 - **T**: Toggle the self-test autopilot on or off.
+- **P**: Capture a full-resolution screenshot of the current playfield.
+- **G**: Open or close the screenshot gallery overlay.
+- **J / L**: Step to the previous or next saved screenshot while the gallery is open.
 
 ## Gameplay overview
 - **Punch through to the back wall.** Each screen asks you to carve a channel through the brick formation and tag the far-right wall a set number of times to open the exit.
@@ -42,6 +46,12 @@ If you prefer to use another static file server, run one from the repository roo
 
 ## Self-test mode
 Tap **T** to enable the automated paddle. It will launch the ball, chase it across the playfield, and keep playing indefinitely—perfect for smoke-testing physics tweaks or grabbing footage without juggling the controls.
+
+## Screenshot gallery
+- Tap **P** at any time during play to save a screenshot. Captures include the HUD so you can correlate game state with the frame.
+- Press **G** to bring up the gallery overlay. The game is paused while the overlay is visible.
+- Use **J** and **L** to page through saved screenshots. Each frame is timestamped so you can line it up with logs or other telemetry.
+- Close the overlay with **G** to resume play right where you left off.
 
 ## Project structure
 ```
