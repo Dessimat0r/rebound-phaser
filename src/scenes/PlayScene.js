@@ -450,6 +450,7 @@ export default class PlayScene extends Phaser.Scene {
     this.paddle.setTint(0x28f7a4);
     this.paddle.body.setImmovable(true);
     this.paddle.body.setAllowGravity(false);
+    this.ensureBodyBoundsCollisionCompat(this.paddle.body);
     this.paddle.body.setCollideWorldBounds(true);
     this.paddle.body.setMaxVelocity(PADDLE_SPEED, PADDLE_SPEED);
     this.paddle.body.setSize(PADDLE_WIDTH, PADDLE_HEIGHT);
@@ -468,6 +469,7 @@ export default class PlayScene extends Phaser.Scene {
     const offset = this.ball.displayWidth / 2 - BALL_RADIUS;
     this.ball.body.setCircle(BALL_RADIUS, offset, offset);
     this.ball.body.setAllowGravity(false);
+    this.ensureBodyBoundsCollisionCompat(this.ball.body);
     this.ball.body.setCollideWorldBounds(true);
     this.ball.body.setMaxVelocity(MAX_BALL_SPEED, MAX_BALL_SPEED);
     this.resetBall();
@@ -530,6 +532,39 @@ export default class PlayScene extends Phaser.Scene {
     graphics.fillRoundedRect(3, 3, width - 6, height / 2, 4);
     graphics.generateTexture(key, width, height);
     graphics.destroy();
+  }
+
+  ensureBodyBoundsCollisionCompat(body) {
+    if (!body || typeof body.setBoundsCollision === 'function') {
+      return;
+    }
+
+    const defaultCheckCollision = () => ({
+      none: false,
+      up: true,
+      down: true,
+      left: true,
+      right: true,
+    });
+
+    body.setBoundsCollision = function setBoundsCollision(
+      left = true,
+      right = true,
+      up = true,
+      down = true,
+    ) {
+      if (!this.checkCollision) {
+        this.checkCollision = defaultCheckCollision();
+      }
+
+      this.checkCollision.left = left;
+      this.checkCollision.right = right;
+      this.checkCollision.up = up;
+      this.checkCollision.down = down;
+      this.checkCollision.none = !(left || right || up || down);
+
+      return this;
+    };
   }
 
   ensureCircleTexture(key, radius) {
