@@ -21,3 +21,8 @@ This document applies to the entire `rebound-phaser` repository. If you add nest
 ## Git hygiene
 - Do not commit `node_modules/` or other generated artefacts. Use `.gitignore` to keep the repository clean.
 - Keep commits focused and write descriptive commit messages that explain the intent of the change.
+
+## Long-running commands
+- Avoid letting commands block the session for more than a couple of minutes. If a task might exceed ~5 minutes, run it with `nohup` or append `&` so it continues in the background while you monitor progress via logs.
+- Prefer non-blocking alternatives such as `npm run ... &`, `nohup <command> > command.log 2>&1 &`, or using smaller scoped commands to gather the needed information.
+- Regularly check on background jobs (`jobs`, `ps`) and tail logs (`tail -f command.log`) to stay informed without freezing the main workflow.
