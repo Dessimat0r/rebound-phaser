@@ -1334,7 +1334,7 @@ export default class PlayScene extends Phaser.Scene {
     const shots = this.screenshots.length;
     const label = shots === 1 ? 'SHOT' : 'SHOTS';
     this.screenshotHintText.setText(
-      `P CAPTURE  G GALLERY  J/K BROWSE  (${shots} ${label})`,
+      `P CAPTURE  G GALLERY  J/L BROWSE  (${shots} ${label})`,
     );
     this.updateScreenshotOverlay();
   }
@@ -1414,7 +1414,7 @@ export default class PlayScene extends Phaser.Scene {
     container.add(timestampText);
 
     const navigationText = this.add
-      .text(0, overlayHeight / 2 - 40, 'J PREV   K NEXT   G CLOSE', {
+      .text(0, overlayHeight / 2 - 40, 'J PREV   L NEXT   G CLOSE', {
         fontFamily: 'Press Start 2P',
         fontSize: '12px',
         color: '#9ae6ff',
@@ -1593,7 +1593,7 @@ export default class PlayScene extends Phaser.Scene {
 
     const label = total === 1 ? 'SHOT' : 'SHOTS';
     this.screenshotNavigationText.setText(
-      `J PREV   K NEXT   G CLOSE   •   ${total} ${label}`,
+      `J PREV   L NEXT   G CLOSE   •   ${total} ${label}`,
     );
   }
 
