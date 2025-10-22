@@ -241,6 +241,7 @@ export default class PlayScene extends Phaser.Scene {
     this.testModeText = null;
     this.messageText = null;
     this.pointTableTexts = [];
+    this.panelBounds = null;
 
     this.cursors = null;
     this.keyW = null;
@@ -268,6 +269,7 @@ export default class PlayScene extends Phaser.Scene {
     this.rescueQueue = [];
     this.rescueTarget = null;
     this.autoPlay = false;
+    this.rescueOriginIndex = null;
   }
 
   init(data) {
@@ -438,6 +440,11 @@ export default class PlayScene extends Phaser.Scene {
     panel.fillRoundedRect(panelLeft - 16, 16, panelWidth, this.scale.height - 32, 18);
     panel.lineStyle(2, 0x45d6ff, 0.35);
     panel.strokeRoundedRect(panelLeft - 16, 16, panelWidth, this.scale.height - 32, 18);
+
+    this.panelBounds = {
+      left: panelLeft - 16,
+      width: panelWidth,
+    };
 
     this.scoreText = this.add.text(24, 24, '', textStyle);
     this.bonusText = this.add.text(24, 52, '', textStyle);
@@ -869,7 +876,7 @@ export default class PlayScene extends Phaser.Scene {
       return null;
     }
 
-    const brickWidth = 48;
+    const brickWidth = 44;
     const brickHeight = 24;
 
     const brick = this.add
@@ -952,11 +959,30 @@ export default class PlayScene extends Phaser.Scene {
   populateLevel(layout) {
     this.regenGroups = new Map();
 
-    const brickWidth = 48;
+    const brickWidth = 44;
     const brickHeight = 24;
-    const padding = 12;
-    const startX = this.scale.width * 0.45;
+    const paddingX = 8;
+    const paddingY = 12;
     const startY = 72;
+
+    const maxColumns = layout.reduce((max, row) => Math.max(max, row.length), 0);
+    const leftMargin = PADDLE_X + PADDLE_WIDTH + 16;
+    const panelLeft = this.panelBounds?.left ?? this.scale.width;
+    const playfieldRight = panelLeft - 4;
+    const availableWidth = Math.max(playfieldRight - leftMargin, brickWidth);
+    const totalWidth =
+      maxColumns * brickWidth + Math.max(0, (maxColumns - 1) * paddingX);
+
+    let startX = leftMargin + brickWidth / 2;
+    if (totalWidth <= availableWidth) {
+      startX += (availableWidth - totalWidth) / 2;
+    } else {
+      const maxStartX =
+        playfieldRight -
+        brickWidth / 2 -
+        (maxColumns - 1) * (brickWidth + paddingX);
+      startX = Phaser.Math.Clamp(startX, brickWidth / 2, maxStartX);
+    }
 
     const columnCover = new Map();
 
@@ -979,8 +1005,8 @@ export default class PlayScene extends Phaser.Scene {
           coverCount,
           colIndex,
           rowIndex,
-          x: startX + colIndex * (brickWidth + padding),
-          y: startY + rowIndex * (brickHeight + padding),
+          x: startX + colIndex * (brickWidth + paddingX),
+          y: startY + rowIndex * (brickHeight + paddingY),
         };
 
         if (type.regenGroup) {
@@ -1011,6 +1037,7 @@ export default class PlayScene extends Phaser.Scene {
   startRescueRun() {
     this.rescueQueue = [];
     const setStart = this.getSetStartIndex(this.currentScreenIndex);
+    this.rescueOriginIndex = this.currentScreenIndex;
     for (let i = this.currentScreenIndex - 1; i >= setStart; i -= 1) {
       this.rescueQueue.push(i);
     }
@@ -1072,8 +1099,12 @@ export default class PlayScene extends Phaser.Scene {
     this.inRescueRun = false;
     this.rescueQueue = [];
     this.rescueTarget = null;
-    this.currentScreenIndex = this.activeScreenIndex;
-    this.ballSpeed = Math.max(this.ballSpeed, BASE_BALL_SPEED + this.screenLoop * 12);
+    const resumeIndex = this.rescueOriginIndex ?? this.currentScreenIndex;
+    const resumeSpeed = this.ballSpeed;
+    this.rescueOriginIndex = null;
+    this.currentScreenIndex = resumeIndex;
+    this.loadScreen(resumeIndex);
+    this.ballSpeed = Math.max(resumeSpeed, BASE_BALL_SPEED + this.screenLoop * 12);
     this.showMessage('Caught it! Keep pushing!');
     this.updateUI();
   }
@@ -1089,6 +1120,7 @@ export default class PlayScene extends Phaser.Scene {
     this.showMessage('Life lost');
     const setStart = this.getSetStartIndex(this.currentScreenIndex);
     this.currentScreenIndex = setStart;
+    this.rescueOriginIndex = null;
     this.loadScreen(this.currentScreenIndex);
   }
 

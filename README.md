@@ -9,6 +9,10 @@ Rebound Phaser is a browser-based reimagining of **Poing**, the cult-classic Ami
 - A live side panel showing brick values, back-wall progress, score, bonus multiplier, and remaining lives.
 - Built-in self-test autopilot so you can watch the game exercise itself while you debug or demo changes.
 
+## Play it online
+- The latest build is always live at **https://dessimat0r.github.io/rebound-phaser/**. Use it to sanity-check behaviour in a production-like environment before and after changes.
+- The site exposes the same controls as the local build, including the **T** key for the self-test autopilot—handy for exercising levels without manual input.
+
 ## Getting started
 1. Install [Node.js](https://nodejs.org/) 18 or newer.
 2. Start the local development server:

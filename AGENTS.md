@@ -15,6 +15,7 @@ This document applies to the entire `rebound-phaser` repository. If you add nest
 
 ## Testing & validation
 - Manually verify the game in at least one evergreen desktop browser before opening a pull request.
+- Use the public build at https://dessimat0r.github.io/rebound-phaser/ when smoke-testing fixes, and call out any differences between the hosted version and local builds.
 - Include instructions for reproducing any test scenario that requires special steps.
 
 ## Git hygiene
