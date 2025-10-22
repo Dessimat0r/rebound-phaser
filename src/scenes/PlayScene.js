@@ -404,8 +404,8 @@ export default class PlayScene extends Phaser.Scene {
     this.ball.body.setCircle(BALL_RADIUS);
     this.ball.body.setAllowGravity(false);
     this.ball.body.setCollideWorldBounds(true);
+    this.ball.body.setBoundsCollision(false, true, true, true);
     this.ball.body.onWorldBounds = true;
-    this.ball.body.checkCollision.left = false;
     this.ball.body.setMaxVelocity(MAX_BALL_SPEED, MAX_BALL_SPEED);
     this.resetBall();
   }
